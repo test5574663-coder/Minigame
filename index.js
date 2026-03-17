@@ -8,14 +8,12 @@ const {
 } = require("discord.js");
 
 const express = require("express");
-const fs = require("fs");
 
 // ===== KEEP ALIVE =====
 const app = express();
 app.get("/", (req, res) => res.send("OK"));
 app.listen(3000, () => console.log("KeepAlive running"));
 
-// ===== CONFIG =====
 const TOKEN = process.env.TOKEN;
 
 const client = new Client({
@@ -32,6 +30,10 @@ let taixiu = {
 };
 
 let tableMessage = null;
+
+// ===== COOLDOWN =====
+const fishCooldown = new Map(); // 60s
+const txCooldown = new Map();   // 10s
 
 // ===== PLAYER =====
 function getPlayer(id) {
@@ -117,7 +119,6 @@ async function rollResult(channel) {
 
  const result = Math.random() < 0.5 ? "tai" : "xiu";
 
- // xử lý win/lose
  const winners = taixiu.bets[result];
  const losers = result === "tai" ? taixiu.bets.xiu : taixiu.bets.tai;
 
@@ -144,7 +145,7 @@ async function rollResult(channel) {
  setTimeout(() => startRound(channel), 10000);
 }
 
-// ===== COMMAND REGISTER =====
+// ===== REGISTER =====
 client.once("ready", async () => {
 
  console.log("Bot ready");
@@ -192,7 +193,7 @@ client.on("interactionCreate", async i => {
  const id = i.user.id;
  const player = getPlayer(id);
 
- // PROFILE
+ // ===== PROFILE =====
  if (i.commandName === "profile") {
 
   const embed = new EmbedBuilder()
@@ -208,8 +209,22 @@ client.on("interactionCreate", async i => {
   return i.reply({ embeds: [embed] });
  }
 
- // CAU CA
+ // ===== CAU CA =====
  if (i.commandName === "cauca") {
+
+  const now = Date.now();
+
+  if (fishCooldown.has(id)) {
+   const timeLeft = (fishCooldown.get(id) + 60000 - now) / 1000;
+   if (timeLeft > 0) {
+    return i.reply({
+     content: `⏳ Đợi ${Math.ceil(timeLeft)}s để câu tiếp`,
+     ephemeral: true
+    });
+   }
+  }
+
+  fishCooldown.set(id, now);
 
   const rarity = rollRarity();
   const pool = fishList[rarity];
@@ -233,8 +248,21 @@ client.on("interactionCreate", async i => {
   }
  }
 
- // TAIXIU
+ // ===== TAIXIU =====
  if (i.commandName === "taixiu") {
+
+  const now = Date.now();
+
+  // cooldown 10s
+  if (txCooldown.has(id)) {
+   const timeLeft = (txCooldown.get(id) + 10000 - now) / 1000;
+   if (timeLeft > 0) {
+    return i.reply({
+     content: `⏳ Đợi ${Math.ceil(timeLeft)}s để cược tiếp`,
+     ephemeral: true
+    });
+   }
+  }
 
   const side = i.options.getString("chon");
   const money = i.options.getInteger("tien");
@@ -244,22 +272,24 @@ client.on("interactionCreate", async i => {
   }
 
   if (taixiu.bets.tai[id] || taixiu.bets.xiu[id]) {
-   return i.reply({ content: "Bạn đã cược rồi", ephemeral: true });
+   return i.reply({ content: "Bạn đã cược round này", ephemeral: true });
   }
 
   player.coin -= money;
   taixiu.bets[side][id] = money;
 
+  txCooldown.set(id, now);
+
   if (tableMessage) {
    tableMessage.edit({ embeds: [createEmbed()] });
   }
 
-  i.reply(`Đã cược ${money} vào ${side}`);
+  i.reply(`Đã cược ${money} coin vào ${side}`);
  }
 
 });
 
-// ===== START TABLE =====
+// ===== START =====
 client.on("messageCreate", msg => {
  if (msg.content === "!startTx") {
   startRound(msg.channel);

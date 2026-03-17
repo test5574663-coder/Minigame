@@ -17,7 +17,10 @@ app.listen(3000, () => console.log("KeepAlive running"));
 const TOKEN = process.env.TOKEN;
 
 const client = new Client({
- intents: [GatewayIntentBits.Guilds]
+ intents: [
+  GatewayIntentBits.Guilds,
+  GatewayIntentBits.MessageContent // FIX
+ ]
 });
 
 // ===== DATA =====
@@ -32,8 +35,13 @@ let taixiu = {
 let tableMessage = null;
 
 // ===== COOLDOWN =====
-const fishCooldown = new Map(); // 60s
-const txCooldown = new Map();   // 10s
+const fishCooldown = new Map();
+const txCooldown = new Map();
+
+// ===== FORMAT VND =====
+function formatVND(num) {
+ return num.toLocaleString("vi-VN") + " VND";
+}
 
 // ===== PLAYER =====
 function getPlayer(id) {
@@ -73,7 +81,7 @@ function createEmbed(result = "Đang chờ...", time = 60) {
   .setTitle("======= TaiXiu For Fun =======")
   .setDescription(
 `⚪Tài⚪   (${time}s)           ⚫Xỉu⚫
-${tai} coin      (${result})      ${xiu} coin
+${formatVND(tai)}      (${result})      ${formatVND(xiu)}
 
 -----------------------------
 ${historyIcons()}
@@ -109,7 +117,6 @@ async function startRound(channel) {
 // ===== ROLL =====
 async function rollResult(channel) {
 
- // animation
  for (let i = 0; i < 3; i++) {
   await tableMessage.edit({
    embeds: [createEmbed("🎲 Đang lắc...", 0)]
@@ -146,7 +153,7 @@ async function rollResult(channel) {
 }
 
 // ===== REGISTER =====
-client.once("ready", async () => {
+client.once("clientReady", async () => {
 
  console.log("Bot ready");
 
@@ -165,6 +172,7 @@ client.once("ready", async () => {
    .setDescription("Đặt cược")
    .addStringOption(o =>
     o.setName("chon")
+     .setDescription("Chọn tài hoặc xỉu") // FIX
      .setRequired(true)
      .addChoices(
       { name: "tai", value: "tai" },
@@ -172,6 +180,7 @@ client.once("ready", async () => {
      ))
    .addIntegerOption(o =>
     o.setName("tien")
+     .setDescription("Số tiền cược") // FIX
      .setRequired(true))
 
  ].map(c => c.toJSON());
@@ -193,14 +202,13 @@ client.on("interactionCreate", async i => {
  const id = i.user.id;
  const player = getPlayer(id);
 
- // ===== PROFILE =====
  if (i.commandName === "profile") {
 
   const embed = new EmbedBuilder()
    .setTitle(i.user.username)
    .setThumbnail(i.user.displayAvatarURL())
    .addFields(
-    { name: "💰 Bịp Coin", value: String(player.coin) },
+    { name: "💰 Bịp Coin", value: formatVND(player.coin) },
     { name: "🎲 Win", value: String(player.taixiu.win) },
     { name: "🎲 Lose", value: String(player.taixiu.lose) },
     { name: "🐔 Pet", value: player.pet.name }
@@ -209,7 +217,6 @@ client.on("interactionCreate", async i => {
   return i.reply({ embeds: [embed] });
  }
 
- // ===== CAU CA =====
  if (i.commandName === "cauca") {
 
   const now = Date.now();
@@ -238,7 +245,7 @@ client.on("interactionCreate", async i => {
 `${i.user.username} câu được **${fish.name}**
 ⭐ ${rarity}
 
-💰 +${fish.value} coin`
+💰 +${formatVND(fish.value)}`
    );
 
   await i.reply({ embeds: [embed] });
@@ -248,12 +255,10 @@ client.on("interactionCreate", async i => {
   }
  }
 
- // ===== TAIXIU =====
  if (i.commandName === "taixiu") {
 
   const now = Date.now();
 
-  // cooldown 10s
   if (txCooldown.has(id)) {
    const timeLeft = (txCooldown.get(id) + 10000 - now) / 1000;
    if (timeLeft > 0) {
@@ -268,7 +273,7 @@ client.on("interactionCreate", async i => {
   const money = i.options.getInteger("tien");
 
   if (player.coin < money) {
-   return i.reply({ content: "Không đủ coin", ephemeral: true });
+   return i.reply({ content: "Không đủ tiền", ephemeral: true });
   }
 
   if (taixiu.bets.tai[id] || taixiu.bets.xiu[id]) {
@@ -284,7 +289,7 @@ client.on("interactionCreate", async i => {
    tableMessage.edit({ embeds: [createEmbed()] });
   }
 
-  i.reply(`Đã cược ${money} coin vào ${side}`);
+  i.reply(`Đã cược ${formatVND(money)} vào ${side}`);
  }
 
 });
